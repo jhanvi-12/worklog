@@ -50,7 +50,6 @@ class UseRegistrationView(APIView):
         return Response({'serializer': serializer, 'style': serializer.style})
 
     def post(self, request, format=None):
-        breakpoint()
         serializer = RegisterSerializer(data=request.data)  # serializer obj and send parsed data
         if serializer.is_valid(raise_exception=True):  # validate if is valid or not
             group = Group.objects.get(id=request.data['group'])
@@ -75,7 +74,6 @@ class UserLoginView(APIView):
         return Response({'serializer': serializer, 'style': serializer.style})
 
     def post(self, request, *args, **kwargs):
-        breakpoint()
         serializer = LoginSerializer(data=request.data)
         if serializer.is_valid(raise_exception=True):
             if 'user' in serializer.validated_data:
