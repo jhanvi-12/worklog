@@ -4,14 +4,16 @@ from mylog.api.api_views import (
     UserLoginView, UserDailyLogsView,
     UseRegistrationView, ListUserView,
     AddDailyLogVieW, GetOptionView, CreateTaskView,
-    CreateProjectView, CreateCSvFileView
+    CreateProjectView, CreateCSvFileView, LogoutView
 )
+
 
 app_name = 'mylog'
 
 urlpatterns = [
     path('', UseRegistrationView.as_view(), name='register'),
     path('login/', UserLoginView.as_view(), name='login'),
+    path('logout/', LogoutView.as_view(), name='logout'),
     path('log/', UserDailyLogsView.as_view(), name='daily_log'),
     path('users/list/', ListUserView.as_view(), name='list'),
     path('add/log/', AddDailyLogVieW.as_view(), name='add_log'),

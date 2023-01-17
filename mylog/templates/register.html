@@ -31,11 +31,6 @@
                                 </div>
                                 <div class="col">
                                   <div class="form-outline flex-fill mb-0"><span><i aria-hidden="true" class="fa fa-envelope"></i></span>
-                                      {% render_field serializer.group style=style %}
-                                  </div>
-                                </div>
-                                <div class="col">
-                                  <div class="form-outline flex-fill mb-0"><span><i aria-hidden="true" class="fa fa-envelope"></i></span>
                                       {% render_field serializer.email style=style %}
                                   </div>
                                 </div>
@@ -62,4 +57,10 @@
             </div>
         </section>
 {% endblock %}
-{% block extra_js %}<script type="text/javascript" src="{% static 'js/user.js' %}"></script> {% endblock extra_js %}
+{% block extra_js %}
+<script type="text/javascript">
+{% for key, value in errors.items %}
+    alertify.error("{{ key }}: {{ value|join:', ' }}");
+{% endfor %}
+</script>
+{% endblock extra_js %}

@@ -13,7 +13,6 @@ User = get_user_model()
 
 class RegisterSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(required=True, validators=[UniqueValidator(queryset=User.objects.all())])
-    group = serializers.PrimaryKeyRelatedField(queryset=Group.objects.all())
 
     class Meta:
         model = CustomUser
@@ -28,7 +27,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class LoginSerializer(serializers.ModelSerializer):
     class Meta:
-        model = User
+        model = CustomUser
         fields = ['id', 'email', 'password']
         extra_kwargs = {
             'email': {'required': True},
@@ -39,7 +38,7 @@ class LoginSerializer(serializers.ModelSerializer):
         email = attrs.get('email')
         password = attrs.get('password')
         if email and password:
-            user = User.objects.filter(email=email).last()
+            user = CustomUser.objects.filter(email=email).last()
             if user is not None:
                 user.set_password(password)
                 user.save()

@@ -36,3 +36,10 @@
       </div>
     </section>
 {% endblock %}
+{% block extra_js %}
+<script type="text/javascript">
+{% for key, value in errors.items %}
+    alertify.error("{{ key }}: {{ value|join:', ' }}");
+{% endfor %}
+</script>
+{% endblock extra_js %}

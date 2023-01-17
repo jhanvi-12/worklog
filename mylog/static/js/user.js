@@ -6,26 +6,29 @@
 //    username = register.at(1).value;
 //    first_name = register.at(2).value;
 //    last_name = register.at(3).value;
-//    group = parseInt(register.at(4).value);
-//    email = register.at(5).value;
-//    password = register.at(6).value;
+//    email = register.at(4).value;
+//    password = register.at(5).value;
 //    data = {'username': username, 'first_name': first_name, 'last_name': last_name,
-//            'group': group, 'email': email, 'password': password, 'csrfmiddlewaretoken': csr}
+//            'email': email, 'password': password, 'csrfmiddlewaretoken': csr}
 //    $.ajax({
 //    type: "POST",
 //    url: "",
 //    data: data,
 //    dataType: 'json',
-//    success: function(data) {
-//            alertify.set('notifier', 'position', 'top-right');
-//            alertify.success('Register Successfully');
+//    success: function(response) {
+//            if (response.status === 'success'){
+//                alertify.set('notifier', 'position', 'top-right');
+//                alertify.success(response.message);
+//            }
+//            else {
+//                for (let key in response.errors){
+//                var error_msg = response.errors[key]
+//                alertify.set('notifier', 'position', 'top-right');
+//                alertify.error(error_msg.join(","));
+////                window.location.href = response.redirect_url;
+//                }
+//            }
 //    },
-//    error: function(data) {
-//        if (data.status === 400) {
-//            console.log(data.responseJson);
-//            handleError();
-//        }
-//    }
 //    });
 //});
 

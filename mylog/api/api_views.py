@@ -2,21 +2,25 @@ import csv
 import datetime
 from http import HTTPStatus
 from django.contrib import messages
-from django.contrib.auth import login
+from django.contrib.auth import login, logout
 from django.contrib.auth.models import Group
 from django.core.paginator import Paginator
 from django.core.validators import EMPTY_VALUES
 from django.db.models import Q
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
+from django.urls import reverse
 from drf_excel.mixins import XLSXFileMixin
 from drf_excel.renderers import XLSXRenderer
-from rest_framework import generics
+from knox.views import LoginView
+from rest_framework import generics, permissions
 from rest_framework.generics import ListAPIView
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import TemplateHTMLRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ReadOnlyModelViewSet
+from knox.views import LogoutView as KnoxLogoutView
 
 from mylog.api.filters import ListUserFilter
 from mylog.api.serializers import (
@@ -33,6 +37,7 @@ from mylog.models import UserDailyLogs, Project, Task
 class GetOptionView(APIView):
     """ class when admin login, can see options to create project, task
     and user's list view ."""
+    permission_classes = [IsAuthenticated]
     renderer_classes = [TemplateHTMLRenderer]
     template_name = 'admin_option.html'
 
@@ -51,21 +56,21 @@ class UseRegistrationView(APIView):
 
     def post(self, request, format=None):
         serializer = RegisterSerializer(data=request.data)  # serializer obj and send parsed data
-        if serializer.is_valid(raise_exception=True):  # validate if is valid or not
-            group = Group.objects.get(id=request.data['group'])
-            user = serializer.save()
-            user.groups.add(group)
-            Response(serializer.data, status=HTTPStatus.CREATED)
+        if serializer.is_valid():
+            serializer.save()
             messages.success(self.request, USER_CREATED)
-            return redirect('mylog:login')
-        messages.error(self.request, USER_REGISTER_ERROR)
-        return redirect('mylog:register')
+            return redirect(reverse('mylog:login'))
+        else:
+            errors = serializer.errors
+            return Response({'serializer': serializer, 'errors': errors, 'style': serializer.style},
+                            template_name='register.html')
 
 
-class UserLoginView(APIView):
+class UserLoginView(LoginView):
     """
     user login view
     """
+    permission_classes = (permissions.AllowAny, )
     renderer_classes = [TemplateHTMLRenderer]
     template_name = 'login.html'
 
@@ -75,16 +80,33 @@ class UserLoginView(APIView):
 
     def post(self, request, *args, **kwargs):
         serializer = LoginSerializer(data=request.data)
-        if serializer.is_valid(raise_exception=True):
+        try:
+            serializer.is_valid(raise_exception=True)
             if 'user' in serializer.validated_data:
                 user = serializer.validated_data['user']
                 login(request, user)
                 messages.success(self.request, USER_LOGIN)
-                if request.user.groups.filter(name="Admin").exists():
-                    return redirect('mylog:get_admin_option')
-                return redirect('mylog:daily_log')
-        messages.error(self.request, INVALID_LOGIN_CREDENTIAL)
-        return Response(serializer.errors, status=HTTPStatus.BAD_REQUEST)
+                # if request.user.groups.filter(name="Admin").exists():
+                #     return redirect('mylog:get_admin_option')
+                # elif request.user.groups.filter(name="Software Engineer").exists():
+                #     return redirect('mylog:daily_log')
+                return redirect(reverse('mylog:daily_log'))
+            messages.error(self.request, INVALID_LOGIN_CREDENTIAL)
+            return redirect(reverse('mylog:login'))
+        except Exception as e:
+            # messages.error(self.request, INVALID_LOGIN_CREDENTIAL)
+            errors = serializer.errors
+            return Response({'status': 'failed', 'errors': errors, 'style': serializer.style},
+                            template_name='login.html')
+
+
+class LogoutView(APIView):
+    # renderer_classes = [TemplateHTMLRenderer]
+    # template_name = 'login.html'
+
+    def post(self, request, format=None):
+        logout(request)
+        return redirect(reverse('mylog:login'))
 
 
 class UserDailyLogsView(APIView):
@@ -92,8 +114,11 @@ class UserDailyLogsView(APIView):
     template_name = 'daily_log_update.html'
 
     def get(self, request):
-        serializer = UserLogSerializer()
-        return Response({'serializer': serializer, 'style': serializer.style})
+        if request.user.is_authenticated:
+            serializer = UserLogSerializer()
+            return Response({'serializer': serializer, 'style': serializer.style})
+        else:
+            return redirect(reverse('mylog:login'))
 
     def post(self, request, *args, **kwargs):
         serializer = UserLogSerializer(data=request.data)
@@ -108,6 +133,8 @@ class UserDailyLogsView(APIView):
 
 class CreateProjectView(APIView):
     """ class for project creation """
+    permission_classes = [IsAuthenticated]
+
     def post(self, request, format=None):
         serializer = ProjectSerializer(data=request.data)
         if serializer.is_valid():
@@ -118,6 +145,8 @@ class CreateProjectView(APIView):
 
 class CreateTaskView(APIView):
     """ class for task creation """
+    permission_classes = [IsAuthenticated]
+
     def post(self, request, format=None):
         serializer = TaskSerializer(data=request.data)
         if serializer.is_valid():
@@ -127,6 +156,7 @@ class CreateTaskView(APIView):
 
 
 class ListUserView(ListAPIView):
+    permission_classes = [IsAuthenticated]
     renderer_classes = [TemplateHTMLRenderer]
     template_name = 'user_log_list.html'
     context_object_name = 'users_list'
@@ -165,6 +195,7 @@ class ListUserView(ListAPIView):
 
 
 class AddDailyLogVieW(generics.CreateAPIView):
+    permission_classes = [IsAuthenticated]
     """ class for add task manually"""
 
     def post(self, request, *args, **kwargs):
