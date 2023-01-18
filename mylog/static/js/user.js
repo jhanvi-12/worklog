@@ -151,3 +151,23 @@ function clearFilter(){
     // and reload the page
     window.location.href = window.location.href.split("?")[0];
 }
+
+// function for  getting tasks related to selected project
+document.getElementById("id_project_name").addEventListener("change", get_related_tasks);
+
+function get_related_tasks() {
+    var project_id = document.getElementById("id_project_name").value;
+    var task_select = document.getElementById("id_task");
+    task_select.innerHTML = "";
+    fetch(`/get_related_tasks/${project_id}/`)
+        .then(response => response.json())
+        .then(data => {
+            data.forEach(function (task) {
+                var option = document.createElement("option");
+                option.value = task.id;
+                option.text = task.task_name;
+                task_select.appendChild(option);
+            });
+        });
+}
+

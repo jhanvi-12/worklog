@@ -53,17 +53,22 @@ class LoginSerializer(serializers.ModelSerializer):
 
 class UserLogSerializer(serializers.ModelSerializer):
     project_name = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
-    task = serializers.PrimaryKeyRelatedField(queryset=Task.objects.all())
+    task = serializers.PrimaryKeyRelatedField(queryset=Task.objects.all(), required=False)
 
     class Meta:
         model = UserDailyLogs
         fields = ['user', 'date', 'project_name', 'task', 'description', 'start_time', 'end_time']
 
+    def __init__(self, *args, **kwargs):
+        initial_tasks = kwargs.pop('initial', {}).get('task', [])
+        super().__init__(*args, **kwargs)
+        self.fields['task'].queryset = Task.objects.filter(id__in=initial_tasks)
+
     def create(self, validated_data):
-        user = UserDailyLogs.objects.create(**validated_data)
-        if not user:
-            raise serializers.ValidationError({'Error': INVALID_DETAILS})
-        return validated_data
+        user = self.context['request'].user
+        validated_data['user'] = user
+        log = UserDailyLogs.objects.create(**validated_data)
+        return log
 
 
 class UserSearchSerializer(serializers.ModelSerializer):

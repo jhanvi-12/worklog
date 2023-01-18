@@ -22,17 +22,21 @@
               {% csrf_token %}
                 <div class="mb-3" id="user-{{user.id}}">
                     <div class="form-control fw-bold fs-5 mb-3 text-uppercase" id="user_id" style="border-radius:30px; text-align:left;">
-                        {% render_field serializer.user style=style %}
+                        {{ user }}
                     </div>
                     <div class="form-control fw-bold fs-5 mb-3 text-uppercase project-name" id="project" style="border-radius:30px;">
-                        {% render_field serializer.project_name style=style %}
+                        <select id="id_project_name" name="project_name">
+                            {% for project in serializer.fields.project_name.queryset %}
+                                <option value="{{ project.id }}">{{ project.project_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-control fw-bold fs-5 mb-3 text-uppercase" id="form-task" style="border-radius:30px;">
+                        <select id="id_task" name="task"></select>
                     </div>
 
                     <div class="form-control fw-bold fs-5 mb-3 text-uppercase" id="date" style="border-radius:30px;">
                         {% render_field serializer.date style=style %}
-                    </div>
-                    <div class="form-control fw-bold fs-5 mb-3 text-uppercase" id="form-task" style="border-radius:30px;">
-                        {% render_field serializer.task style=style %}
                     </div>
                     <div class="form-control fw-bold fs-5 mb-3 text-uppercase" id="form-description" style="border-radius:30px;">
                         {% render_field serializer.description style=style %}
@@ -112,3 +116,11 @@
 </div>
 
 {% endblock %}
+{% block extra_js %}
+<script type="text/javascript">
+{% for key, value in errors.items %}
+    alertify.error("{{ key }}: {{ value|join:', ' }}");
+{% endfor %}
+</script>
+<script type="text/javascript" src="{% static 'js/user.js' %}"></script>
+{% endblock extra_js %}

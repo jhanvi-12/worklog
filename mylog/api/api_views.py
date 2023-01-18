@@ -14,7 +14,7 @@ from drf_excel.mixins import XLSXFileMixin
 from drf_excel.renderers import XLSXRenderer
 from knox.views import LoginView
 from rest_framework import generics, permissions
-from rest_framework.generics import ListAPIView
+from rest_framework.generics import ListAPIView, CreateAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import TemplateHTMLRenderer
 from rest_framework.response import Response
@@ -109,7 +109,7 @@ class LogoutView(APIView):
         return redirect(reverse('mylog:login'))
 
 
-class UserDailyLogsView(APIView):
+class UserDailyLogsView(CreateAPIView):
     renderer_classes = [TemplateHTMLRenderer]
     template_name = 'daily_log_update.html'
 
@@ -121,14 +121,28 @@ class UserDailyLogsView(APIView):
             return redirect(reverse('mylog:login'))
 
     def post(self, request, *args, **kwargs):
+        breakpoint()
+        if not request.user.is_authenticated:
+            return redirect(reverse('mylog:login'))
         serializer = UserLogSerializer(data=request.data)
         if serializer.is_valid(raise_exception=True):
             serializer.save()
-            Response({'user': serializer.data}, status=HTTPStatus.CREATED)
             messages.success(self.request, USER_LOG_CREATED)
             return redirect('mylog:daily_log')
-        messages.error(self.request, INVALID_LOGIN_CREDENTIAL)
-        return Response(serializer.errors, status=HTTPStatus.BAD_REQUEST, template_name='mylog:daily_log')
+        else:
+            data = {
+                'status': 'failed',
+                'errors': serializer.errors,
+                'style': serializer.style,
+                'user': request.user
+            }
+            return Response(data, template_name='daily_log_update.html', status=HTTPStatus.BAD_REQUEST)
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        first_project_tasks = Task.objects.filter(project=Project.objects.first()).values_list('id', flat=True)
+        context.update({'request': self.request, 'initial': {'task': first_project_tasks}})
+        return context
 
 
 class CreateProjectView(APIView):
@@ -165,21 +179,25 @@ class ListUserView(ListAPIView):
 
     def get(self, request, *args, **kwargs):
         queryset = UserDailyLogs.objects.all()
-        user = self.request.GET.get('user', None)
-        project = self.request.GET.get('project', None)
+        user = self.request.GET.get('user')
+        project = self.request.GET.get('project')
         date = self.request.GET.get('date', None)
-        logs_filter = ListUserFilter(self.request.GET, queryset=queryset)
-        if (user or project or date) is not None:
-            if date in EMPTY_VALUES:
-                date_obj = None
-            else:
-                date_obj = datetime.datetime.strptime(date, '%m/%d/%Y').date()
-            filter_queryset = logs_filter.qs.filter(Q(user__username=user)
-                                                    | Q(project_name__name=project)
-                                                    | Q(date=date_obj))
-            users = self.get_users_filter_paginate_queryset(filter_queryset)
-            return Response({'users': users}, template_name='user_log_list.html')
-        users = self.get_users_filter_paginate_queryset(queryset)
+        if date in EMPTY_VALUES:
+            date_obj = None
+        else:
+            date_obj = datetime.datetime.strptime(date, '%m/%d/%Y').date()
+
+        if user:
+            queryset = queryset.filter(user__username=user)
+        if project:
+            queryset = queryset.filter(project_name__name=project)
+        if date_obj:
+            queryset = queryset.filter(date=date_obj)
+
+        page = self.request.GET.get('page')
+        serializer = ListUserSerializer(queryset, many=True)
+        paginator = Paginator(serializer.data, self.paginate_by)
+        users = paginator.get_page(page)
         return Response({'users': users}, template_name='user_log_list.html')
 
     def get_users_filter_paginate_queryset(self, queryset):
@@ -237,82 +255,8 @@ class CreateCSvFileView(APIView):
         return response
 
 
-class DailyUpdateExcelView(XLSXFileMixin, ReadOnlyModelViewSet):
-    """ class for generating spreadsheet for daily update list"""
-    queryset = UserDailyLogs.objects.all()
-    serializer_class = UserLogSerializer
-    renderer_classes = (XLSXRenderer, TemplateHTMLRenderer)
-    template_name = 'daily_log_update.html'
+class TaskListAPIView(APIView):
+    def get(self, request, project_id):
+        tasks = Task.objects.filter(project_name=project_id).values('id', 'task_name')
+        return Response(tasks)
 
-    column_header = {
-        'titles': [
-            "Column_1_name",
-            "Column_2_name",
-            "Column_3_name",
-        ],
-        'column_width': [17, 30, 17],
-        'height': 25,
-        'style': {
-            'fill': {
-                'fill_type': 'solid',
-                'start_color': 'FFCCFFCC',
-            },
-            'alignment': {
-                'horizontal': 'center',
-                'vertical': 'center',
-                'wrapText': True,
-                'shrink_to_fit': True,
-            },
-            'border_side': {
-                'border_style': 'thin',
-                'color': 'FF000000',
-            },
-            'font': {
-                'name': 'Arial',
-                'size': 14,
-                'bold': True,
-                'color': 'FF000000',
-            },
-        },
-    }
-    body = {
-        'style': {
-            'fill': {
-                'fill_type': 'solid',
-                'start_color': 'FFCCFFCC',
-            },
-            'alignment': {
-                'horizontal': 'center',
-                'vertical': 'center',
-                'wrapText': True,
-                'shrink_to_fit': True,
-            },
-            'border_side': {
-                'border_style': 'thin',
-                'color': 'FF000000',
-            },
-            'font': {
-                'name': 'Arial',
-                'size': 14,
-                'bold': False,
-                'color': 'FF000000',
-            }
-        },
-        'height': 40,
-    }
-    column_data_styles = {
-        'distance': {
-            'alignment': {
-                'horizontal': 'right',
-                'vertical': 'top',
-            },
-            'format': '0.00E+00'
-        },
-        'created_at': {
-            'format': 'd.m.y h:mm',
-        }
-    }
-
-    def get(self, request):
-        serializer = UserLogSerializer()
-        return Response({'serializer': serializer, 'style': serializer.style})

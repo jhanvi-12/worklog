@@ -4,7 +4,7 @@ from mylog.api.api_views import (
     UserLoginView, UserDailyLogsView,
     UseRegistrationView, ListUserView,
     AddDailyLogVieW, GetOptionView, CreateTaskView,
-    CreateProjectView, CreateCSvFileView, LogoutView
+    CreateProjectView, CreateCSvFileView, LogoutView, TaskListAPIView
 )
 
 
@@ -21,4 +21,6 @@ urlpatterns = [
     path('option/', GetOptionView.as_view(), name='get_admin_option'),
     path('create/project/', CreateProjectView.as_view(), name='create_project'),
     path('create/task/', CreateTaskView.as_view(), name='create_task'),
+    path('get_related_tasks/<int:pk>/', TaskListAPIView, name='get_related_tasks'),
+
 ]
