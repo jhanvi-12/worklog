@@ -1,40 +1,40 @@
 // ajax call for register, if any error is occurred
-//$('#register_btn').click(function() {
-//debugger;
-//    csr = $('input[name="csrfmiddlewaretoken"]').val();
-//    register = $('#register_form').serializeArray();
-//    username = register.at(1).value;
-//    first_name = register.at(2).value;
-//    last_name = register.at(3).value;
-//    email = register.at(4).value;
-//    password = register.at(5).value;
-//    data = {'username': username, 'first_name': first_name, 'last_name': last_name,
-//            'email': email, 'password': password, 'csrfmiddlewaretoken': csr}
-//    $.ajax({
-//    type: "POST",
-//    url: "",
-//    data: data,
-//    dataType: 'json',
-//    success: function(response) {
-//            if (response.status === 'success'){
-//                alertify.set('notifier', 'position', 'top-right');
-//                alertify.success(response.message);
-//            }
-//            else {
-//                for (let key in response.errors){
-//                var error_msg = response.errors[key]
-//                alertify.set('notifier', 'position', 'top-right');
-//                alertify.error(error_msg.join(","));
-////                window.location.href = response.redirect_url;
-//                }
-//            }
-//    },
-//    });
-//});
+$('#register_btn').click(function(e) {
+    e.preventDefault();
+    csr = $('input[name="csrfmiddlewaretoken"]').val();
+    register = $('#register_form').serializeArray();
+    username = register.at(1).value;
+    first_name = register.at(2).value;
+    last_name = register.at(3).value;
+    email = register.at(4).value;
+    password = register.at(5).value;
+    data = {'username': username, 'first_name': first_name, 'last_name': last_name,
+           'email': email, 'password': password, 'csrfmiddlewaretoken': csr}
+    $.ajax({
+    type: "POST",
+    url: "",
+    data: data,
+    dataType: 'json',
+    success: function(response) {
+             if (response.status === 'success') {
+                alertify.set('notifier', 'position', 'top-right');
+                alertify.success("User Register Successfully!!")
+            }
+            else {
+             $('.alert-success').removeClass('msg-success-show');
+              for (let key in response.errors) {
+                   let error_message = response.errors[key];
+                        alertify.set('notifier', 'position', 'top-right');
+                        alertify.error(error_message)
+                }
+    };
+    }
+   });
+   });
+
 
 // function for error message
 function handleError() {
-debugger;
     alertify.set('notifier', 'position', 'top-right');
     alertify.error("Please enter valid details to Register!!");
 }
@@ -42,18 +42,37 @@ debugger;
 
 // function for daily log form error message
 function validate() {
-        user = document.forms['logForm']['user'].value;
-        project = document.forms['logForm']['project'].value;
-        date = document.forms['logForm']['date'].value;
-        task = document.forms['logForm']['task'].value;
-        description = document.forms['logForm']['description'].value;
-        start_time = document.forms['logForm']['start_time'].value;
-        end_time = document.forms['logForm']['end_time'].value;
-        if (user || project || date || task || description || start_time || end_time == "") {
-            alertify.set('notifier', 'position', 'top-right');
-            alertify.error('All Fields are Required, Please check once!!');
-        }
-        return false;
+    csr = $('input[name="csrfmiddlewaretoken"]').val();
+    log_form = $('#logForm').serializeArray();
+    project = log_form.at(1).value;
+    date = log_form.at(2).value;
+    task = log_form.at(3).value;
+    description = log_form.at(4).value;
+    start_time = log_form.at(5).value;
+    end_time = log_form.at(6).value;
+    data = {'project_name': project, 'date': date, 'task': task,
+           'description': description, 'start_time': start_time, 'end_time': end_time,
+           'csrfmiddlewaretoken': csr}
+
+    $.ajax({
+    type: "POST",
+    url: "{% url 'mylog:daily_log' %}",
+    data: data,
+    dataType: 'json',
+    success: function(response) {
+             if (response.status === 'success') {
+                alertify.set('notifier', 'position', 'top-right');
+                alertify.success("User Daily Log created Successfully!!")
+            }
+            else {
+              for (let key in response.errors) {
+                   let error_message = response.errors[key];
+                        alertify.set('notifier', 'position', 'top-right');
+                        alertify.error(error_message)
+                }
+    };
+    }
+   });
 }
 
 function addTask(id) {
@@ -156,18 +175,43 @@ function clearFilter(){
 document.getElementById("id_project_name").addEventListener("change", get_related_tasks);
 
 function get_related_tasks() {
-    var project_id = document.getElementById("id_project_name").value;
-    var task_select = document.getElementById("id_task");
+    project_id = document.getElementById("id_project_name").value;
+    task_select = document.getElementById("id_task");
     task_select.innerHTML = "";
-    fetch(`/get_related_tasks/${project_id}/`)
-        .then(response => response.json())
-        .then(data => {
+    $.ajax({
+        url: '/get_related_tasks/',
+        type: 'GET',
+        data: {'project_id': project_id},
+        dataType: 'json',
+        success: function(data) {
             data.forEach(function (task) {
-                var option = document.createElement("option");
+                option = document.createElement("option");
                 option.value = task.id;
-                option.text = task.task_name;
+                option.text = task.title;
                 task_select.appendChild(option);
             });
-        });
+        }
+    });
 }
 
+// for setting id of the task field from template
+document.addEventListener("DOMContentLoaded", function() {
+    document.getElementById("id_task").addEventListener("change", setTaskId);
+
+function setTaskId() {
+    task_id = document.getElementById("id_task").value;
+    $.ajax({
+        url: '/get_task_details/',
+        type: 'GET',
+        data: {'task_id': task_id},
+        success: function(data) {
+            data.forEach(function (task) {
+                option = document.createElement("option");
+                option.value = task.id;
+                option.text = task.title;
+                document.getElementById('id_task').appendChild(option);
+            });
+        }
+    });
+}
+});

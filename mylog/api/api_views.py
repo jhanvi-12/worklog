@@ -3,33 +3,27 @@ import datetime
 from http import HTTPStatus
 from django.contrib import messages
 from django.contrib.auth import login, logout
-from django.contrib.auth.models import Group
 from django.core.paginator import Paginator
 from django.core.validators import EMPTY_VALUES
-from django.db.models import Q
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
-from drf_excel.mixins import XLSXFileMixin
-from drf_excel.renderers import XLSXRenderer
 from knox.views import LoginView
 from rest_framework import generics, permissions
-from rest_framework.generics import ListAPIView, CreateAPIView
+from rest_framework.decorators import api_view
+from rest_framework.generics import ListAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import TemplateHTMLRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.viewsets import ReadOnlyModelViewSet
-from knox.views import LogoutView as KnoxLogoutView
-
-from mylog.api.filters import ListUserFilter
 from mylog.api.serializers import (
     LoginSerializer, UserLogSerializer, RegisterSerializer,
-    ListUserSerializer, TaskSerializer, ProjectSerializer
+    ListUserSerializer, TaskSerializer, ProjectSerializer, UserDailyLogListSerializer
 )
 from mylog.constants import (
-    USER_CREATED, USER_LOGIN, USER_REGISTER_ERROR,
-    INVALID_LOGIN_CREDENTIAL, USER_LOG_CREATED, INVALID_DETAILS, DAILY_LOG_CSV_COLUMNS
+    USER_CREATED, USER_LOGIN,
+    INVALID_LOGIN_CREDENTIAL, USER_LOG_CREATED,
+    INVALID_DETAILS, DAILY_LOG_CSV_COLUMNS, LOGIN_REQUIRED
 )
 from mylog.models import UserDailyLogs, Project, Task
 
@@ -37,21 +31,25 @@ from mylog.models import UserDailyLogs, Project, Task
 class GetOptionView(APIView):
     """ class when admin login, can see options to create project, task
     and user's list view ."""
-    permission_classes = [IsAuthenticated]
     renderer_classes = [TemplateHTMLRenderer]
     template_name = 'admin_option.html'
 
     def get(self, request):
         serializer = TaskSerializer()
-        return Response({'serializer': serializer, 'style': serializer.style})
+        if request.user.is_authenticated:
+            return Response({'serializer': serializer, 'style': serializer.style})
+        return Response({'status': 'failed', 'errors': LOGIN_REQUIRED,
+                         'style': serializer.style}, template_name='error.html')
 
 
-class UseRegistrationView(APIView):
+class RegistrationView(APIView):
     renderer_classes = [TemplateHTMLRenderer]
     template_name = 'register.html'
 
     def get(self, request):
         serializer = RegisterSerializer()
+        if request.user.is_authenticated:
+            return redirect(reverse('mylog:daily_log'))
         return Response({'serializer': serializer, 'style': serializer.style})
 
     def post(self, request, format=None):
@@ -81,68 +79,79 @@ class UserLoginView(LoginView):
     def post(self, request, *args, **kwargs):
         serializer = LoginSerializer(data=request.data)
         try:
-            serializer.is_valid(raise_exception=True)
+            serializer.is_valid()
             if 'user' in serializer.validated_data:
                 user = serializer.validated_data['user']
                 login(request, user)
                 messages.success(self.request, USER_LOGIN)
-                # if request.user.groups.filter(name="Admin").exists():
-                #     return redirect('mylog:get_admin_option')
-                # elif request.user.groups.filter(name="Software Engineer").exists():
-                #     return redirect('mylog:daily_log')
+                if request.user.groups.filter(name="Admin").exists():
+                    return redirect('mylog:get_admin_option')
+                elif request.user.groups.filter(name="Software Engineer").exists():
+                    return redirect('mylog:daily_log')
                 return redirect(reverse('mylog:daily_log'))
             messages.error(self.request, INVALID_LOGIN_CREDENTIAL)
             return redirect(reverse('mylog:login'))
         except Exception as e:
-            # messages.error(self.request, INVALID_LOGIN_CREDENTIAL)
             errors = serializer.errors
             return Response({'status': 'failed', 'errors': errors, 'style': serializer.style},
                             template_name='login.html')
 
 
 class LogoutView(APIView):
-    # renderer_classes = [TemplateHTMLRenderer]
-    # template_name = 'login.html'
-
+    """ this class is for logout view """
     def post(self, request, format=None):
         logout(request)
         return redirect(reverse('mylog:login'))
 
 
-class UserDailyLogsView(CreateAPIView):
+class UserDailyLogsView(APIView):
     renderer_classes = [TemplateHTMLRenderer]
     template_name = 'daily_log_update.html'
 
     def get(self, request):
+        serializer = UserLogSerializer()
         if request.user.is_authenticated:
-            serializer = UserLogSerializer()
             return Response({'serializer': serializer, 'style': serializer.style})
         else:
-            return redirect(reverse('mylog:login'))
+            return Response({'status': 'failed', 'errors': LOGIN_REQUIRED,
+                             'style': serializer.style}, template_name='error.html')
 
     def post(self, request, *args, **kwargs):
-        breakpoint()
+        data = request.data.copy()
+        data['user'] = request.user.id
+        serializer = UserLogSerializer(data=data)
         if not request.user.is_authenticated:
             return redirect(reverse('mylog:login'))
-        serializer = UserLogSerializer(data=request.data)
-        if serializer.is_valid(raise_exception=True):
+        if serializer.is_valid():
             serializer.save()
             messages.success(self.request, USER_LOG_CREATED)
             return redirect('mylog:daily_log')
         else:
-            data = {
-                'status': 'failed',
-                'errors': serializer.errors,
-                'style': serializer.style,
-                'user': request.user
-            }
-            return Response(data, template_name='daily_log_update.html', status=HTTPStatus.BAD_REQUEST)
+            errors = serializer.errors
+            return Response({'serializer': serializer, 'errors': errors, 'style': serializer.style},
+                            template_name='daily_log_update.html')
 
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        first_project_tasks = Task.objects.filter(project=Project.objects.first()).values_list('id', flat=True)
-        context.update({'request': self.request, 'initial': {'task': first_project_tasks}})
-        return context
+
+@api_view(['GET'])
+def get_related_tasks(request):
+    """ function for getting task from selected project name
+    in daily log update
+    returns: serialize data """
+    project_id = request.GET.get('project_id')
+    tasks = Task.objects.filter(project_id=project_id)
+    serializer = TaskSerializer(tasks, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['GET'])
+def get_task_details(request):
+    """ function for get task from selected task field
+    in daily log update
+    returns: serialize data """
+    task_id = request.GET.get('task_id')
+    task = Task.objects.get(id=task_id)
+    serializer = TaskSerializer(task)
+    return Response(serializer.data)
 
 
 class CreateProjectView(APIView):
@@ -170,46 +179,60 @@ class CreateTaskView(APIView):
 
 
 class ListUserView(ListAPIView):
-    permission_classes = [IsAuthenticated]
     renderer_classes = [TemplateHTMLRenderer]
-    template_name = 'user_log_list.html'
-    context_object_name = 'users_list'
-    serializer_class = ListUserSerializer
-    paginate_by = 5
+    template_name = 'users_list.html'
+    paginate_by = 10
 
     def get(self, request, *args, **kwargs):
-        queryset = UserDailyLogs.objects.all()
-        user = self.request.GET.get('user')
-        project = self.request.GET.get('project')
-        date = self.request.GET.get('date', None)
-        if date in EMPTY_VALUES:
-            date_obj = None
+        serializer = ListUserSerializer()
+        if request.user.is_authenticated:
+            queryset = UserDailyLogs.objects.all()
+            csv_obj = self.request.GET.get('create_csv')
+            user = self.request.GET.get('user')
+            project = self.request.GET.get('project')
+            date = self.request.GET.get('date', None)
+            if user or project or date or csv_obj:
+                if date in EMPTY_VALUES:
+                    date_obj = None
+                else:
+                    date_obj = datetime.datetime.strptime(date, '%m/%d/%Y').date()
+                # if filter applied to any of the below option.
+                if user:
+                    queryset = queryset.filter(user__username__icontains=user)
+                if project:
+                    queryset = queryset.filter(project_name__name__icontains=project)
+                if date_obj:
+                    queryset = queryset.filter(date=date_obj)
+                # when click ond download csv this function is
+                # called and if not and main queryset is returned
+                if csv_obj:
+                    return self.create_csv_response(queryset, self.paginate_by)
+                return Response({'users': queryset}, template_name='users_list.html')
+            else:
+                page = self.request.GET.get('page')
+                serializer = ListUserSerializer(queryset, many=True)
+                paginator = Paginator(serializer.data, self.paginate_by)
+                users = paginator.get_page(page)
+                return Response({'users': users}, template_name='users_list.html')
         else:
-            date_obj = datetime.datetime.strptime(date, '%m/%d/%Y').date()
+            return Response({'status': 'failed', 'errors': LOGIN_REQUIRED,
+                             'style': serializer.style}, template_name='error.html')
 
-        if user:
-            queryset = queryset.filter(user__username=user)
-        if project:
-            queryset = queryset.filter(project_name__name=project)
-        if date_obj:
-            queryset = queryset.filter(date=date_obj)
-
-        page = self.request.GET.get('page')
+    def create_csv_response(self, queryset, paginate_by):
+        """ function for creating csv file form queryset and
+        filtered queryset. """
         serializer = ListUserSerializer(queryset, many=True)
-        paginator = Paginator(serializer.data, self.paginate_by)
-        users = paginator.get_page(page)
-        return Response({'users': users}, template_name='user_log_list.html')
-
-    def get_users_filter_paginate_queryset(self, queryset):
-        """
-        function for user's filtered or not filtered queryset
-        and applied it to paginator class
-        """
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="daily_log.csv"'
+        writer = csv.writer(response)
+        writer.writerow(DAILY_LOG_CSV_COLUMNS)
+        paginator = Paginator(serializer.data, paginate_by)
         page = self.request.GET.get('page')
-        serializer = ListUserSerializer(queryset, many=True)
-        paginator = Paginator(serializer.data, self.paginate_by)
-        users = paginator.get_page(page)
-        return users
+        filtered_data = paginator.get_page(page)
+        for row in filtered_data:
+            writer.writerow(row.values())
+        messages.success(self.request, "CSV file is created successfully!!")
+        return response
 
 
 class AddDailyLogVieW(generics.CreateAPIView):
@@ -237,26 +260,24 @@ class AddDailyLogVieW(generics.CreateAPIView):
         return redirect('mylog:daily_log')
 
 
-class CreateCSvFileView(APIView):
+class UserDailyLogList(APIView):
     renderer_classes = [TemplateHTMLRenderer]
-    template_name = 'user_log_list.html'
+    template_name = 'user_daily_log_list.html'
+    paginate_by = 5
 
-    def post(self, request):
-        queryset = UserDailyLogs.objects.all()
-        # pass queryset to serializer class to get list format in response
-        serializer = ListUserSerializer(queryset, many=True)
-        response = HttpResponse(content_type='text/csv')
-        writer = csv.writer(response)
-        writer.writerow(DAILY_LOG_CSV_COLUMNS)
-        for row in serializer.data:
-            writer.writerow(row.values())
-        messages.success(self.request, "CSV file is created successfully!!")
-        response['Content-Disposition'] = 'attachment; filename="daily_log.csv"'
-        return response
-
-
-class TaskListAPIView(APIView):
-    def get(self, request, project_id):
-        tasks = Task.objects.filter(project_name=project_id).values('id', 'task_name')
-        return Response(tasks)
-
+    def get(self, request):
+        serializer = UserDailyLogListSerializer()
+        project = self.request.GET.get('project')
+        if request.user.is_authenticated:
+            user = request.user
+            filter_queryset = UserDailyLogs.objects.filter(user=user)
+            if project is not None:
+                project_obj = Project.objects.filter(name__icontains=project).first()
+                filter_queryset = filter_queryset.filter(project_name__id=project_obj.id)
+            page = self.request.GET.get('page')
+            serializer = UserDailyLogListSerializer(filter_queryset, many=True)
+            paginator = Paginator(serializer.data, self.paginate_by)
+            users = paginator.get_page(page)
+            return Response({'users': users}, template_name='user_daily_log_list.html')
+        return Response({'status': 'failed', 'errors': LOGIN_REQUIRED,
+                         'style': serializer.style}, template_name='error.html')

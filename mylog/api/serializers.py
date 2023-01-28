@@ -19,7 +19,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = ['username', 'first_name', 'last_name', 'group', 'email', 'password']
 
     def create(self, validated_data):
-        user = CustomUser.objects.create(**validated_data)
+        user = CustomUser.objects.create_user(**validated_data)
         if not user:
             return serializers.ValidationError({'error': USER_REGISTER_ERROR})
         return user
@@ -28,7 +28,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 class LoginSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ['id', 'email', 'password']
+        fields = ['email', 'password']
         extra_kwargs = {
             'email': {'required': True},
             'password': {'required': True},
@@ -37,38 +37,29 @@ class LoginSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         email = attrs.get('email')
         password = attrs.get('password')
+
         if email and password:
             user = CustomUser.objects.filter(email=email).last()
-            if user is not None:
-                user.set_password(password)
-                user.save()
             # authenticate user by username and password after
             # conversion of password into hash format
-                auth_user = authenticate(username=user.username, password=password)
-                if auth_user is None:
-                    raise serializers.ValidationError(USER_NOT_FOUND)
-                attrs['user'] = auth_user
+            auth_user = authenticate(username=user.username, password=password)
+            if auth_user is None:
+                raise serializers.ValidationError(USER_NOT_FOUND)
+            attrs['user'] = auth_user
         return attrs
 
 
 class UserLogSerializer(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(queryset=CustomUser.objects.all(), write_only=True)
     project_name = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
-    task = serializers.PrimaryKeyRelatedField(queryset=Task.objects.all(), required=False)
+    task = serializers.PrimaryKeyRelatedField(queryset=Task.objects.all())
 
     class Meta:
         model = UserDailyLogs
         fields = ['user', 'date', 'project_name', 'task', 'description', 'start_time', 'end_time']
 
-    def __init__(self, *args, **kwargs):
-        initial_tasks = kwargs.pop('initial', {}).get('task', [])
-        super().__init__(*args, **kwargs)
-        self.fields['task'].queryset = Task.objects.filter(id__in=initial_tasks)
-
     def create(self, validated_data):
-        user = self.context['request'].user
-        validated_data['user'] = user
-        log = UserDailyLogs.objects.create(**validated_data)
-        return log
+        return UserDailyLogs.objects.create(**validated_data)
 
 
 class UserSearchSerializer(serializers.ModelSerializer):
@@ -96,7 +87,7 @@ class TaskSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Task
-        fields = ['project', 'title']
+        fields = ['id', 'project', 'title']
 
     def create(self, validated_data):
         return Task.objects.create(**validated_data)
@@ -111,7 +102,8 @@ class ListUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserDailyLogs
-        fields = ['id', 'user', 'email', 'date', 'project_name', 'task', 'description', 'start_time', 'end_time', 'total_hours']
+        fields = ['id', 'user', 'email', 'date', 'project_name', 'task', 'description', 'start_time', 'end_time',
+                  'total_hours']
 
     def get_project_name(self, obj):
         return obj.project_name.name
@@ -133,10 +125,25 @@ class ListUserSerializer(serializers.ModelSerializer):
         return obj.user.email
 
 
-# class AddDailyUpdateSerializer(serializers.ModelSerializer):
-#     project_name = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all())
-#     task = serializers.PrimaryKeyRelatedField(queryset=Task.objects.all())
-#
-#     class Meta:
-#         model = UserDailyLogs
-#         fields = ['user', 'date', 'project_name', 'task', 'description', 'start_time', 'end_time']
+class UserDailyLogListSerializer(serializers.ModelSerializer):
+    project_name = serializers.SerializerMethodField(source='get_project_name')
+    task = serializers.SerializerMethodField(source='get_task')
+    total_hours = serializers.SerializerMethodField(source='get_total_hours')
+
+    class Meta:
+        model = UserDailyLogs
+        fields = ['id', 'user', 'date', 'project_name', 'task', 'description', 'start_time', 'end_time',
+                  'total_hours']
+
+    def get_project_name(self, obj):
+        return obj.project_name.name
+
+    def get_task(self, obj):
+        return obj.task.title
+
+    def get_total_hours(self, obj):
+        """ method for counting total_hours from start and end time of task"""
+        total_hours = str(datetime.combine(
+            date.today(), obj.end_time) - datetime.combine(
+            date.today(), obj.start_time))
+        return total_hours

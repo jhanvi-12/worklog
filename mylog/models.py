@@ -11,6 +11,9 @@ class CustomUser(AbstractUser):
     def __str__(self):
         return "{} - {}".format(self.username, self.email)
 
+    def is_admin(self):
+        return self.groups.filter(name="Admin").exists()
+
 
 class Project(models.Model):
     name = models.CharField(_("project"), max_length=50)
